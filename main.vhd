@@ -1,4 +1,3 @@
-
 library IEEE;
 use IEEE.STD_LOGIC_1164.all;
 use IEEE.numeric_std.all;
@@ -6,10 +5,10 @@ use IEEE.std_logic_unsigned.all;
 
 entity main is 
     port(
-    unencrypted   : in std_logic_vector(127 downto 0) ;--:= x"00112233445566778899aabbccddeeff";
+    ciphertext   : in std_logic_vector(127 downto 0) ;--:= x"00112233445566778899aabbccddeeff";
     key           : in std_logic_vector(255 downto 0) ;--:= x"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
     clk           : in std_logic;
-    crypted       : out std_logic_vector(127 downto 0) := x"00000000000000000000000000000000"                                      
+    plaintext       : out std_logic_vector(127 downto 0) := x"00000000000000000000000000000000"                                      
     );
     
     
@@ -18,13 +17,13 @@ end entity;
 architecture arch of main is 
 
 
-component sub_shift_mix is 
+component shift_sub_add_mix is 
     port(
     tmp           : in std_logic_vector(127 downto 0);  -- := x"00102030405060708090a0b0c0d0e0f0";
-    
-	after_add_rounds : out std_logic_vector(127 downto 0);
+    keyin      : in std_logic_vector(127 downto 0);
+    output : out std_logic_vector(127 downto 0);
 
-	mix_counter   : in std_logic_vector(3 downto 0)      
+    mix_counter   : in std_logic_vector(3 downto 0)      
     );
     
     
@@ -35,9 +34,9 @@ component key_schedule is
     tmp_key_main   : in std_logic_vector(255 downto 0)  ;
     clk   : in  std_logic;
 
-    tmp_1 : out std_logic_vector(127 downto 0);
+    keyround : out std_logic_vector(127 downto 0);
    
-    rcon_ct_key : in std_logic_vector(3 downto 0)          
+    rcon_ct_key : in std_logic_vector(4 downto 0)          
     );
     
     
@@ -45,15 +44,16 @@ end component;
 
 
 signal tmp :  std_logic_vector(127 downto 0);
-signal after_add_rounds :  std_logic_vector(127 downto 0);
+signal output :  std_logic_vector(127 downto 0);
 signal tmp_key_main :  std_logic_vector(255 downto 0);
 
-signal tmp_1 :  std_logic_vector(127 downto 0);
-signal rcon_ct_key :  std_logic_vector(3 downto 0)  := "0001";
-signal mix_counter :  std_logic_vector(3 downto 0)  := "0001";
+signal keyround : std_logic_vector(127 downto 0);
+signal keyin :  std_logic_vector(127 downto 0);
+signal rcon_ct_key :  std_logic_vector(4 downto 0)  := "00001";
+signal mix_counter :  std_logic_vector(3 downto 0)  := "0000";
 signal not_mix_col :  std_logic_vector(127 downto 0) ;
 
-signal i_key :  std_logic_vector(127 downto 0);
+signal tmpin :  std_logic_vector(127 downto 0);
 
 
 type state_type is (KEY_GEN,ROUND);
@@ -61,20 +61,21 @@ signal state,current_state : state_type := ROUND;
 
 
 begin
-SUB_SHIFT_MIX_MODULE: sub_shift_mix port map(
+SHIFT_SUB_ADD_MIX_MODULE: shift_sub_add_mix port map(
                                              tmp => tmp,
-                                             after_add_rounds => after_add_rounds,
+                                             keyin => keyin,
+                                             output => output,
                                              mix_counter      => mix_counter                                        
                                              );
 
 KEY_MODULE: key_schedule port map(
                                              tmp_key_main => tmp_key_main,
-                                             tmp_1 => tmp_1,
+                                             keyround => keyround,
                                              rcon_ct_key => rcon_ct_key,
                                              clk => clk
                                              );
 
-    tmp_key_main <= key;    --nap vao key_schedule key va tmp_key_main deu la 256 bit
+    tmp_key_main <= key;    -- tmp_key_main and key are 256 bits
   
     process(clk)
     begin
@@ -82,45 +83,130 @@ KEY_MODULE: key_schedule port map(
             case state is 
                when ROUND => 
                
-                if (rcon_ct_key = "0001") then
-                    tmp <= unencrypted xor key(255 downto 128);     -- R1start
+                if rcon_ct_key <"00111" then
+                    state <= KEY_GEN;                               
+                elsif (rcon_ct_key = "00111") then
+                    tmp <= ciphertext xor keyround;     -- keyround =  key14
+                    keyin <= keyround;
                     state <= KEY_GEN;
-                elsif(rcon_ct_key < "1111") then  -- voi cac round < 15
-                    tmp <= i_key;       -- R.start
+                elsif(rcon_ct_key < "10110") then  -- when round < 22 // sua 09 = 01001
+                    keyin <= keyround;       -- R.start
+                    tmp <= tmpin;
                     state <= KEY_GEN;
                 
-                elsif(rcon_ct_key = "1111") then  -- het round 14 qua round 15 ikey la gia tri ma hoa
-                        crypted <= i_key;
+                elsif(rcon_ct_key = "10110") then  -- round= 22 
+                        plaintext <= tmpin;
                 
                 end if;
                     
                when KEY_GEN =>  
-                  if (rcon_ct_key = "0001") then
-                    i_key <= after_add_rounds xor tmp_1; --tmp_1 = key_1
-                    rcon_ct_key <= rcon_ct_key + "0001" ;
-                    state <= ROUND;                 
-                                    
-                  
-                  elsif(rcon_ct_key = "1101" ) then     --13
-                     i_key <= after_add_rounds xor tmp_1;
-                     rcon_ct_key <= rcon_ct_key + "0001" ; 
-                     mix_counter <= "1110" ;            -- 14
-                     state <= ROUND;
-                 
-                 elsif(rcon_ct_key < "1111") then           -- <15
-                     i_key <= after_add_rounds xor tmp_1;
+                 if rcon_ct_key < "00111" then
+                    rcon_ct_key <= rcon_ct_key + "0001";
+                    state <= ROUND;
+                 elsif (rcon_ct_key = "00111") then
+                    tmpin <= tmp; -- End of round 1
+                    rcon_ct_key <= rcon_ct_key + "0001";
+                    state <= ROUND;   
+                 elsif rcon_ct_key < "10101" then  -- stop at 01001 for test
+                    tmpin <= output; -- End of round 
+                    rcon_ct_key <= rcon_ct_key + "0001";
+                    state <= ROUND;            
+                 elsif(rcon_ct_key = "10101" ) then     --round = 21, lastround only inv.shiftrow, inv.subbyte, addroundkey => mix_counter=1110 stop at 01001 for test
+                     tmpin <= output;
                      rcon_ct_key <= rcon_ct_key + "0001" ;
+                     mix_counter <= "1110" ;            
                      state <= ROUND;
-                 
-                  
-                  
-                end if;
-               
-               when others =>
-                    
-             end case;
+                 end if;
+                when others =>                
+                end case; 
         end if;
-           
-        end process;
+      end process;
+end architecture;  
+            
+                
+                
 
-end architecture;
+
+
+
+--            if (rcon_ct_key < "00111") then
+--                tmp <= unencrypted;
+--                keyin <= tmp_key_main(255 downto 128);
+--                rcon_ct_key <= rcon_ct_key +"00001";
+--            elsif rcon_ct_key = "00111" then  --7 R0 K14
+--                keyin <= keyround;
+--                tmp <= tmp xor keyin;
+--                rcon_ct_key <= rcon_ct_key +"00001";
+--            elsif rcon_ct_key = "01000" then --8 R1 K13
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001";
+--            elsif rcon_ct_key = "01001" then --9 R2 K12
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001";
+--            elsif rcon_ct_key = "01010" then --10 R3 K11
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001";             
+--            elsif rcon_ct_key = "01011" then --11 R4 K10
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001";
+--            elsif rcon_ct_key = "01100" then --12 R5 K9
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001";
+--            elsif rcon_ct_key = "01101" then --13 R6 K8
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001";
+--            elsif rcon_ct_key = "01110" then --14 R7 K7
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001";
+--            elsif rcon_ct_key = "01111" then --15 R8 K6
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001";
+--            elsif rcon_ct_key = "10000" then --16 R9 K5
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001"; 
+--            elsif rcon_ct_key = "10001" then --17 R10 K4
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001"; 
+--             elsif rcon_ct_key = "10010" then --18 R11 K3
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001";
+--             elsif rcon_ct_key = "10011" then --19 R12 K2
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001";
+--            elsif rcon_ct_key = "10100" then --20 R13 K1
+--                keyin <= keyround;
+--                tmp <=tmpin;
+--                tmpin <= output;
+--                rcon_ct_key <= rcon_ct_key + "00001";
+--            elsif rcon_ct_key = "10101" then --21 R14 K0
+--                mix_counter <= "1111";
+--                keyin <= keyround;
+--                tmp <= tmpin;
+--                rcon_ct_key <= rcon_ct_key + "00001";  
+--            elsif rcon_ct_key = "10110" then 
+--                crypted <= output;
+--             end if;
