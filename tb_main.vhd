@@ -1,24 +1,3 @@
-----------------------------------------------------------------------------------
--- Company: 
--- Engineer: ATAKAN CAKIR
--- 
--- Create Date: 26.10.2022 22:16:41
--- Design Name: 
--- Module Name: tb_main - Behavioral
--- Project Name: Advanced Encryption Standard (AES)
--- Target Devices: 
--- Tool Versions: 
--- Description: 
--- 
--- Dependencies: 
--- 
--- Revision:
--- Revision 0.01 - File Created
--- Additional Comments:
--- 
-----------------------------------------------------------------------------------
-
-
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 
