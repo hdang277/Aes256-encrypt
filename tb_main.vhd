@@ -69,7 +69,7 @@ stim_proc: process
         -- key         <= x"43a564b5634e55634f6534e32324f132" ; -- example  2
         -- key         <= x"ad2387b5e4f678435813798132aed6c5" ; -- example  3
         
-        --crypted= x"c56262a16a1a6699b6890e19fffc3fee";
+        --crypted= x"8ea2b7ca516745bfeafc49904b496089";
     wait for clock_period*28;
        wait;  
 
